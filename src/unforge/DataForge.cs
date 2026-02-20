@@ -5,8 +5,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Reflection;
 using System.Text;
 using System.Xml;
 
@@ -841,24 +839,50 @@ namespace unforge
 
 		public void Save(String filename)
 		{
-			foreach (var fileReference in this.PathToRecordMap.Keys)
+			var aggregateFilename = Path.GetFullPath(filename);
+			var outputDirectory = Path.GetDirectoryName(aggregateFilename) ?? ".";
+			if (!Directory.Exists(outputDirectory)) Directory.CreateDirectory(outputDirectory);
+			var recordPathByIndex = this.PathToRecordMap.ToDictionary(item => item.Value, item => item.Key);
+			var splitPaths = new HashSet<String>(recordPathByIndex.Values.Select(path => Path.GetFullPath(Path.Combine(outputDirectory, path))));
+			var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+			if (splitPaths.Any(path => path.Equals(aggregateFilename, pathComparison)))
 			{
-				var node = this.ReadRecordByPathAsXml(fileReference);
+				aggregateFilename = Path.Combine(outputDirectory, $"{Path.GetFileNameWithoutExtension(filename)}.aggregate{Path.GetExtension(filename)}");
+			}
 
-				if (node == null) continue;
+			using var aggregateStream = File.Create(aggregateFilename);
+			using var aggregateWriter = XmlWriter.Create(aggregateStream, _xmlSettings);
+			aggregateWriter.WriteStartElement("DataForge");
 
-				var newPath = Path.Combine(Path.GetDirectoryName(filename), fileReference);
-
-				if (!Directory.Exists(Path.GetDirectoryName(newPath))) Directory.CreateDirectory(Path.GetDirectoryName(newPath));
-
-
-				using (var fileStream= File.OpenWrite(newPath))
-				using (var writer = XmlWriter.Create(fileStream, _xmlSettings))
+			lock (this.BaseStream)
+			{
+				for (var recordIndex = 0; recordIndex < this.RecordDefinitionCount; recordIndex++)
 				{
-					node.WriteTo(writer);
-					writer.Flush();
+					var node = this.ReadRecordAtIndexAsXml(new XmlDocument(), recordIndex);
+					if (node == null) continue;
+
+					if (recordPathByIndex.TryGetValue(recordIndex, out var fileReference))
+					{
+						var newPath = Path.Combine(outputDirectory, fileReference);
+						var recordDirectory = Path.GetDirectoryName(newPath);
+						if (!String.IsNullOrWhiteSpace(recordDirectory) && !Directory.Exists(recordDirectory))
+						{
+							Directory.CreateDirectory(recordDirectory);
+						}
+
+						using var splitStream = File.Create(newPath);
+						using var splitWriter = XmlWriter.Create(splitStream, _xmlSettings);
+						node.WriteTo(splitWriter);
+						splitWriter.Flush();
+					}
+
+					node.WriteTo(aggregateWriter);
 				}
 			}
+
+			aggregateWriter.WriteEndElement();
+			aggregateWriter.Flush();
 		}
 	}
 }

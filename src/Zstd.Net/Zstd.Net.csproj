@@ -24,11 +24,17 @@
 	</PropertyGroup>
 
   <ItemGroup>
-    <None Update="x64\libzstd.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <None Update="x64/libzstd.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes/win-x64/native/</PackagePath>
     </None>
-    <None Update="x86\libzstd.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <None Update="x86/libzstd.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes/win-x86/native/</PackagePath>
     </None>
   </ItemGroup>
 	

@@ -16,6 +16,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - rid: win-x64
@@ -41,6 +42,14 @@ jobs:
             runner: ubuntu-latest
             build_unp4kfs: false
             publish_args: "--no-self-contained -p:UseAppHost=false -p:PublishSingleFile=false"
+          - rid: osx-x64
+            dnv: net10.0
+            runner: macos-latest
+            build_unp4kfs: false
+          - rid: osx-arm64
+            dnv: net10.0
+            runner: macos-latest
+            build_unp4kfs: false
 
     steps:
       - name: Checkout
@@ -65,25 +74,21 @@ jobs:
           $rid = "${{ matrix.rid }}"
           $dnv = "${{ matrix.dnv }}"
 
-          # Publish directories for this RID
           $publishDirs = @(
             "src\unp4k.fs\bin\Release\$dnv\$rid\publish",
             "src\unforge.cli\bin\Release\$dnv\$rid\publish",
             "src\unp4k\bin\Release\$dnv\$rid\publish"
           )
 
-          # Strip PDBs from publish directories
           foreach ($dir in $publishDirs) {
             if (Test-Path $dir) {
               Get-ChildItem -Path $dir -Recurse -Filter *.pdb | Remove-Item -Force
             }
           }
 
-          # Ensure an artifacts directory exists for this RID
           $artifactsRoot = "artifacts\$rid"
           New-Item -ItemType Directory -Path $artifactsRoot -Force | Out-Null
 
-          # Zip each individual publish directory
           $map = @{
             "unp4k.fs"    = "src\unp4k.fs\bin\Release\$dnv\$rid\publish"
             "unforge.cli" = "src\unforge.cli\bin\Release\$dnv\$rid\publish"
@@ -99,8 +104,6 @@ jobs:
             }
           }
 
-          # Create a "suite" zip that contains all three publish directories
-          # (kept as subdirectories inside the suite zip, rather than flattened)
           $suiteZip = Join-Path $artifactsRoot "suite-$rid-v${{ env.UNP4K_VERSION }}.zip"
           if (Test-Path $suiteZip) { Remove-Item $suiteZip -Force }
 
@@ -115,8 +118,8 @@ jobs:
             Compress-Archive -Path $pathsToInclude -DestinationPath $suiteZip
           }
 
-      - name: Remove PDBs and package artifacts (Linux)
-        if: runner.os == 'Linux'
+      - name: Remove PDBs and package artifacts (Linux/macOS)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           rid="${{ matrix.rid }}"
@@ -126,7 +129,6 @@ jobs:
           artifacts_root="artifacts/$rid"
           mkdir -p "$artifacts_root"
 
-          # Strip PDBs and zip each component
           for name in unforge.cli unp4k; do
             src="src/$name/bin/Release/$dnv/$rid/publish"
             if [ -d "$src" ]; then
@@ -135,7 +137,6 @@ jobs:
             fi
           done
 
-          # Create suite zip from all packaged components
           suite_dirs=()
           for dir in "src/unforge.cli/bin/Release/$dnv/$rid/publish" "src/unp4k/bin/Release/$dnv/$rid/publish"; do
             [ -d "$dir" ] && suite_dirs+=("$dir")
@@ -161,7 +162,7 @@ jobs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Load README
       run: |
         echo "README<<EOF" >> $GITHUB_ENV
@@ -187,7 +188,7 @@ jobs:
     strategy:
       matrix:
         artifact: [unp4k, unp4k-suite, unforge]
-        rid: [win-x64, win-x86, linux-x64, linux-x86, linux-arm64]
+        rid: [win-x64, win-x86, linux-x64, linux-x86, linux-arm64, osx-x64, osx-arm64]
         include:
           - artifact: unp4k
             glob: "unp4k-*-v*.zip"

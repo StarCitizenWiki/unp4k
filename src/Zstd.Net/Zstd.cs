@@ -1,6 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+#if NET6_0_OR_GREATER
+using System.Reflection;
+#endif
 
 namespace Zstd.Net
 {
@@ -154,13 +158,91 @@ namespace Zstd.Net
 
 	internal static class Zstd
 	{
+		private const String NativeLibraryName = "libzstd";
+
 		internal static IImportZstd Library { get; }
 
 		static Zstd()
 		{
+#if NET6_0_OR_GREATER
+			NativeLibrary.SetDllImportResolver(typeof(Zstd).Assembly, ResolveNativeLibrary);
+#endif
 			if (Environment.Is64BitProcess) Zstd.Library = new Zstd_x64 { };
 			else Zstd.Library = new Zstd_x86 { };
 		}
+
+#if NET6_0_OR_GREATER
+		private static IntPtr ResolveNativeLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+		{
+			_ = assembly;
+			_ = searchPath;
+
+			if (!String.Equals(libraryName, NativeLibraryName, StringComparison.OrdinalIgnoreCase))
+			{
+				return IntPtr.Zero;
+			}
+
+			foreach (var candidate in GetNativeLibraryCandidates())
+			{
+				if (Path.IsPathRooted(candidate) && !File.Exists(candidate))
+				{
+					continue;
+				}
+
+				if (NativeLibrary.TryLoad(candidate, out var handle))
+				{
+					return handle;
+				}
+			}
+
+			return IntPtr.Zero;
+		}
+
+		private static IEnumerable<String> GetNativeLibraryCandidates()
+		{
+			var baseDirectory = AppContext.BaseDirectory;
+
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+			{
+				var windowsRid = RuntimeInformation.ProcessArchitecture == Architecture.X86 ? "win-x86" : "win-x64";
+				var windowsArchFolder = RuntimeInformation.ProcessArchitecture == Architecture.X86 ? "x86" : "x64";
+
+				yield return Path.Combine(baseDirectory, windowsArchFolder, "libzstd.dll");
+				yield return Path.Combine(baseDirectory, "runtimes", windowsRid, "native", "libzstd.dll");
+				yield return Path.Combine(baseDirectory, "libzstd.dll");
+				yield return "libzstd.dll";
+				yield return NativeLibraryName;
+				yield break;
+			}
+
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+			{
+				var linuxRid = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "linux-arm64" : "linux-x64";
+
+				yield return Path.Combine(baseDirectory, "runtimes", linuxRid, "native", "libzstd.so");
+				yield return Path.Combine(baseDirectory, "libzstd.so");
+				yield return "libzstd.so.1";
+				yield return "libzstd.so";
+				yield return NativeLibraryName;
+				yield break;
+			}
+
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+			{
+				var osxRid = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64";
+
+				yield return Path.Combine(baseDirectory, "runtimes", osxRid, "native", "libzstd.dylib");
+				yield return Path.Combine(baseDirectory, "libzstd.dylib");
+				yield return "/opt/homebrew/lib/libzstd.dylib";
+				yield return "/usr/local/lib/libzstd.dylib";
+				yield return "libzstd.dylib";
+				yield return NativeLibraryName;
+				yield break;
+			}
+
+			yield return NativeLibraryName;
+		}
+#endif
 
 		internal static void CheckError(UIntPtr x)
 		{
@@ -215,7 +297,11 @@ namespace Zstd.Net
 		{
 			#region DllImports
 
+#if NET6_0_OR_GREATER
+			private const String DllName = NativeLibraryName;
+#else
 			private const String DllName = @"x64\libzstd";
+#endif
 
 			[DllImport(DllName, EntryPoint = "ZSTD_maxCLevel", CallingConvention = CallingConvention.Cdecl)]
 			private static extern Int32 zstd_GetMaxCompessionLevel();
@@ -333,7 +419,11 @@ namespace Zstd.Net
 		{
 			#region DllImports
 
+#if NET6_0_OR_GREATER
+			private const String DllName = NativeLibraryName;
+#else
 			private const String DllName = @"x86\libzstd";
+#endif
 
 			[DllImport(DllName, EntryPoint = "ZSTD_maxCLevel", CallingConvention = CallingConvention.Cdecl)]
 			private static extern Int32 zstd_GetMaxCompessionLevel();

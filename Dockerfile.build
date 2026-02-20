@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0
+
+WORKDIR /workspace
+
+COPY . .
+
+RUN chmod +x /workspace/docker/build-publish.sh
+
+ENV CONFIGURATION=Release
+ENV FRAMEWORK=net10.0
+ENV RIDS="linux-x64 linux-arm64 osx-x64 osx-arm64"
+ENV OUTPUT_ROOT=/artifacts
+
+VOLUME ["/artifacts"]
+
+ENTRYPOINT ["/workspace/docker/build-publish.sh"]
